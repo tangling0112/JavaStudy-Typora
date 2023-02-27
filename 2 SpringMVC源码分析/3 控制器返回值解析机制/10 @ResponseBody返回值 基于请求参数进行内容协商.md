@@ -4,6 +4,14 @@
 
 ## 基于`Accept`请求头的内容协商策略与基于请求参数的内容协商策略并存时的内容协商的工作效果
 
+![image-20230214032507665](https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/image-20230214032507665.png)
+
+> ​		首先我们应该要知道,我们的内容协商管理器在使用`ContentNegotiationStrategy`获取我们的用户端能够接收的数据格式时,采用的是我们前面参数解析,返回值解析一样的原理,就是直接遍历我们的当前`ContentNegotiationManager`的`strategies`属性中存储的所有`ContentNegotiationStrategy`接口的实现类实例.
+>
+> ​		当我们的基于请求`URL`参数的内容协商策略被开启后,其在`strategies`属性中的存储是在我们的基于请求头的内容协商策略之前的.也就是说,会先看看基于请求`URL`参数的内容协商策略能不能处理,如果能处理就会用它处理,而我们的基于请求头的内容协商策略就不会生效.如果不能处理,就会通过遍历来让我们的基于请求头的内容协商策略来进行处理.
+>
+> ​		因此我们在自定义我们自己的内容协商策略的时候也要注意我们使用`Strategies`方法将它们添加到我们的`ContentNegotiationManager`中时在集合中的存储顺序
+
 ## `contentNegotiationManager`内容协商管理器的引入
 
 ### `AbstractMessageConverterMethodProcessor`类

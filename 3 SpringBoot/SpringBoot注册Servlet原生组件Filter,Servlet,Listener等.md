@@ -7,12 +7,12 @@
 
 ## `Filter`
 
-> - ``@ServletComponentScan`注解`
+> - `@ServletComponentScan`注解
 > - `@WebFilter`注解
 
 ## `Listener`
 
-> - `@ServletComponentScan`注解`
+> - `@ServletComponentScan`注解
 > - `@WebListener`注解
 
 # 2 使用`RegistrationBean`注册我们的`Servlert`,`Filter`,`Listener`
