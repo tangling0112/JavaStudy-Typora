@@ -1,315 +1,272 @@
-# 高可用的诞生背景
+# `Jedis`,`Lettuce`,`RedisTemplate`介绍
 
-# `Nginx`高可用配置
+# `SpringBoot`整合`Redis`流程
 
-## `Nginx`高可用的基本实现方法
+## `Jedis`版
 
-<img src="https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303011258912.png" alt="image-20230301125821784" style="zoom:67%;" />
+- :one:创建一个常规的`SpringBoot`项目
 
-## `keepalived`的安装配置
+    - <img src="https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121210577.png" alt="image-20230312121048472" style="zoom: 80%;" />
 
-- `sudo apt-get install keepalived`
+- **:two:在`pom.xml`配置文件中添加`Jedis`的依赖**
 
-### `keepalived`相关文件所在位置
+    - ```xml
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>4.3.1</version>
+        </dependency>
+        ```
 
-- **`.conf`配置文件**
-    - `/etc/keepalived/`
-- ``
+- **:three:编写`SpringBoot`主启动类**
 
-## `keepalived`配置文件详解
-
-```shell
-! Configuration File for keepalived 
-
-#vrrp 实例部分定义，tangling自定义名称
-vrrp_instance tangling {     
-
-	#指定 keepalived 的角色，必须大写 可选值：MASTER|BACKUP
-    state MASTER               
-    
-    #网卡设置，lvs需要绑定在网卡上，realserver绑定在回环口。区别：lvs对访问为外，realserver为内不易暴露本机信息
-    interface ens33     
-    
-    #虚拟路由标识，是一个数字，同一个vrrp 实例使用唯一的标识，MASTER和BACKUP 的 同一个 vrrp_instance 下 这个标识必须保持一致
-    virtual_router_id 51   
-    
-    #定义优先级，数字越大，优先级越高。
-    priority 100                                  
-    
-    #设定 MASTER 与 BACKUP 负载均衡之间同步检查的时间间隔，单位为秒，两个节点设置必须一样
-    advert_int 1                                
-    
-    #设置验证类型和密码，两个节点必须一致
-    authentication {                              
-        auth_type PASS                        
-        auth_pass 1111                        
-    }         
-    
-    #设置虚拟IP地址，可以设置多个虚拟IP地址，每行一个
-    virtual_ipaddress {                           
-        192.168.184.200                       
-    }
-    
-    #脚本监控状态
-    track_script {                                
-    	#可加权重，但会覆盖声明的脚本权重值。chk_nginx_service weight -20
-        chk_nginx_service                         
-    }
-    
-        notify_master "脚本路径"  #当前节点成为master时，通知脚本执行任务
-        notify_backup "脚本路径"   #当前节点成为backup时，通知脚本执行任务
-        notify_fault  "脚本路径"   #当当前节点出现故障，执行的任务; 
-}      
-
-#定义RealServer对应的Virtual IP及服务端口，IP和端口之间用空格隔开
-virtual_server 192.168.184.200 80  {          
-    delay_loop 6                              #每隔6秒查询realserver状态
-    lb_algo rr                                #后端调试算法（load balancing algorithm）
-    lb_kind DR                                #LVS调度类型NAT/DR/TUN
-    #persistence_timeout 60                   同一IP的连接60秒内被分配到同一台realserver
-    protocol TCP                              #用TCP协议检查realserver状态
-    
-    real_server 192.168.184.128 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
+    - ```java
+        @SpringBootApplication
+        public class MyJedisApplication {
         
-        #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-        TCP_CHECK {                           
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }              
-    
-    real_server 192.168.184.129 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
+            public static void main(String[] args) {
+                SpringApplication.run(MyJedisApplication.class, args);
+            }
         
-        #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-        TCP_CHECK {                           
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }                                         
-}                                             
- 
-vrrp_instance VI_2 {                          #vrrp 实例部分定义，VI_1自定义名称
-    
-    #指定 keepalived 的角色，必须大写 可选值：MASTER|BACKUP 分别表示（主|备）
-    state   BACKUP                            
-    
-    #网卡设置，绑定vip的子接口，lvs需要绑定在网卡上，realserver绑定在回环口。区别：lvs对访问为外，realserver为内不易暴露本机信息
-    interface ens33                           
-    
-    #虚拟路由标识，是一个数字，同一个vrrp 实例使用唯一的标识，MASTER和BACKUP 的 同一个 vrrp_instance 下 这个标识必须保持一致
-    virtual_router_id 52       
-    
-    #定义优先级，数字越大，优先级越高。
-    priority 90                               
-    
-    #设定 MASTER 与 BACKUP 负载均衡之间同步检查的时间间隔，单位为秒，两个节点设置必须一样
-    advert_int 1     
-    
-    #设置验证类型和密码，两个节点必须一致
-    authentication {                          
-        auth_type PASS                        
-        auth_pass 1111                        
-    }
-    
-    #设置虚拟IP地址，可以设置多个虚拟IP地址，每行一个
-    virtual_ipaddress {                       
-        192.168.184.201                       
-    }                                         
-}                                             
- 
-#定义RealServer对应的VIP及服务端口，IP和端口之间用空格隔开
-virtual_server 192.168.184.201 80 {           
-    delay_loop 6                              #每隔6秒查询realserver状态
-    lb_algo rr                                #后端调试算法（load balancing algorithm）
-    lb_kind DR                                #LVS调度类型NAT/DR/TUN
-    #persistence_timeout 60                   #同一IP的连接60秒内被分配到同一台realserver
-    protocol TCP                              #用TCP协议检查realserver状态
-    real_server 192.168.184.128 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        
-        #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-        TCP_CHECK {                           
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }                                         
-    real_server 192.168.184.129 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        
-        #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-        TCP_CHECK {                           
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
         }
-    }
-```
+        ```
 
-## `keepalived`配置示例
+- **:four:使用`Jedis`包编写连接`Redis-server`的代码**
 
-### 主机
-
-```shell
-! Configuration File for keepalived 
-vrrp_instance tangling1 {     
-    state MASTER               
-    interface ens33     
-    virtual_router_id 51   
-    priority 50                                  
-    advert_int 1                                       
-    authentication {                             
-        auth_type PASS                        
-        auth_pass 1111                        
-    }
-    virtual_ipaddress {                           
-        192.168.184.200                       
-    }
-}      
-```
-
-### 备用机
-
-```shell
-! Configuration File for keepalived 
-vrrp_instance tangling1 {     
-    state BACKUP               
-    interface ens33     
-    virtual_router_id 51   
-    priority 50                                  
-    advert_int 1                                       
-    authentication {                             
-        auth_type PASS                        
-        auth_pass 1111                        
-    }
-    virtual_ipaddress {                           
-        192.168.184.200                       
-    }
-}      
-```
-
-## `keepalive`完整`.conf`配置文件
-
-```shell
-! Configuration File for keepalived
-global_defs {                                     #全局定义部分
-    notification_email {                          #设置报警邮件地址，可设置多个
-        acassen@firewall.loc                      #接收通知的邮件地址
-    }                        
-    notification_email_from test0@163.com         #设置 发送邮件通知的地址
-    smtp_server smtp.163.com                      #设置 smtp server 地址，可是ip或域名.可选端口号 （默认25）
-    smtp_connect_timeout 30                       #设置 连接 smtp server的超时时间
-    router_id LVS_DEVEL                           #主机标识，用于邮件通知
-    vrrp_skip_check_adv_addr                   
-    vrrp_strict                                   #严格执行VRRP协议规范，此模式不支持节点单播
-    vrrp_garp_interval 0                       
-    vrrp_gna_interval 0     
-    script_user keepalived_script                 #指定运行脚本的用户名和组。默认使用用户的默认组。如未指定，默认为keepalived_script 用户，如无此用户，则使用root
-    enable_script_security                        #如过路径为非root可写，不要配置脚本为root用户执行。
-}       
- 
-vrrp_script chk_nginx_service {                   #VRRP 脚本声明
-    script "/etc/keepalived/chk_nginx.sh"         #周期性执行的脚本
-    interval 3                                    #运行脚本的间隔时间，秒
-    weight -20                                    #权重，priority值减去此值要小于备服务的priority值
-    fall 3                                        #检测几次失败才为失败，整数
-    rise 2                                        #检测几次状态为正常的，才确认正常，整数
-    user keepalived_script                        #执行脚本的用户或组
-}                                             
- 
-vrrp_instance VI_1 {                              #vrrp 实例部分定义，VI_1自定义名称
-    state MASTER                                  #指定 keepalived 的角色，必须大写 可选值：MASTER|BACKUP
-    interface ens33                               #网卡设置，lvs需要绑定在网卡上，realserver绑定在回环口。区别：lvs对访问为外，realserver为内不易暴露本机信息
-    virtual_router_id 51                          #虚拟路由标识，是一个数字，同一个vrrp 实例使用唯一的标识，MASTER和BACKUP 的 同一个 vrrp_instance 下 这个标识必须保持一致
-    priority 100                                  #定义优先级，数字越大，优先级越高。
-    advert_int 1                                  #设定 MASTER 与 BACKUP 负载均衡之间同步检查的时间间隔，单位为秒，两个节点设置必须一样
-    authentication {                              #设置验证类型和密码，两个节点必须一致
-        auth_type PASS                        
-        auth_pass 1111                        
-    }                                         
-    virtual_ipaddress {                           #设置虚拟IP地址，可以设置多个虚拟IP地址，每行一个
-        192.168.119.130                       
-    }
-    track_script {                                #脚本监控状态
-        chk_nginx_service                         #可加权重，但会覆盖声明的脚本权重值。chk_nginx_service weight -20
-    }
-        notify_master "/etc/keepalived/start_haproxy.sh start"  #当前节点成为master时，通知脚本执行任务
-        notify_backup "/etc/keepalived/start_haproxy.sh stop"   #当前节点成为backup时，通知脚本执行任务
-        notify_fault  "/etc/keepalived/start_haproxy.sh stop"   #当当前节点出现故障，执行的任务; 
-}                                             
- 
-virtual_server 192.168.119.130 80  {          #定义RealServer对应的VIP及服务端口，IP和端口之间用空格隔开
-    delay_loop 6                              #每隔6秒查询realserver状态
-    lb_algo rr                                #后端调试算法（load balancing algorithm）
-    lb_kind DR                                #LVS调度类型NAT/DR/TUN
-    #persistence_timeout 60                   同一IP的连接60秒内被分配到同一台realserver
-    protocol TCP                              #用TCP协议检查realserver状态
-    real_server 192.168.119.120 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        TCP_CHECK {                           #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }                                         
-    real_server 192.168.119.121 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        TCP_CHECK {                           #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }                                         
-}                                             
- 
-vrrp_instance VI_2 {                          #vrrp 实例部分定义，VI_1自定义名称
-    state   BACKUP                            #指定 keepalived 的角色，必须大写 可选值：MASTER|BACKUP 分别表示（主|备）
-    interface ens33                           #网卡设置，绑定vip的子接口，lvs需要绑定在网卡上，realserver绑定在回环口。区别：lvs对访问为外，realserver为内不易暴露本机信息
-    virtual_router_id 52                      #虚拟路由标识，是一个数字，同一个vrrp 实例使用唯一的标识，MASTER和BACKUP 的 同一个 vrrp_instance 下 这个标识必须保持一致
-    priority 90                               #定义优先级，数字越大，优先级越高。
-    advert_int 1                              #设定 MASTER 与 BACKUP 负载均衡之间同步检查的时间间隔，单位为秒，两个节点设置必须一样
-    authentication {                          #设置验证类型和密码，两个节点必须一致
-        auth_type PASS                        
-        auth_pass 1111                        
-    }                                         
-    virtual_ipaddress {                       #设置虚拟IP地址，可以设置多个虚拟IP地址，每行一个
-        192.168.119.131                       
-    }                                         
-}                                             
- 
-virtual_server 192.168.119.131 80 {           #定义RealServer对应的VIP及服务端口，IP和端口之间用空格隔开
-    delay_loop 6                              #每隔6秒查询realserver状态
-    lb_algo rr                                #后端调试算法（load balancing algorithm）
-    lb_kind DR                                #LVS调度类型NAT/DR/TUN
-    #persistence_timeout 60                   #同一IP的连接60秒内被分配到同一台realserver
-    protocol TCP                              #用TCP协议检查realserver状态
-    real_server 192.168.119.120 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        TCP_CHECK {                           #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
-        }                                     
-    }                                         
-    real_server 192.168.119.121 80 {          
-        weight 1                              #权重，最大越高，lvs就越优先访问
-        TCP_CHECK {                           #keepalived的健康检查方式HTTP_GET | SSL_GET | TCP_CHECK | SMTP_CHECK | MISC
-            connect_timeout 10                #10秒无响应超时
-            retry 3                           #重连次数3次
-            delay_before_retry 3              #重连间隔时间
-            connect_port 80                   #健康检查realserver的端口
+    - ```java
+        public class JedisTest {
+            public static void main(String[] args) {
+                Jedis jedisConnection = new Jedis("192.168.184.160",6379);
+                jedisConnection.auth("58828738");
+                jedisConnection.flushAll();
+                System.out.println(jedisConnection.keys("*"));
+                jedisConnection.set("k1","tangling");
+                System.out.println(jedisConnection.get("k1"));
+                jedisConnection.set("k2","zhangsan");
+                System.out.println(jedisConnection.get("k2"));
+            }
         }
-    }
+        ```
+
+## `Lettuce`版
+
+- :one:**创建一个常规的`SpringBoot`项目**
+
+    - <img src="https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121210577.png" alt="image-20230312121048472" style="zoom: 80%;" />
+
+- **:two:在`pom.xml`配置文件中添加`Jedis`的依赖**
+
+    - ```xml
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.2.0.RELEASE</version>
+        </dependency>
+        ```
+
+- **:three:编写`SpringBoot`主启动类**
+
+    - ```java
+        @SpringBootApplication
+        public class MyJedisApplication {
+        
+            public static void main(String[] args) {
+                SpringApplication.run(MyJedisApplication.class, args);
+            }
+        
+        }
+        ```
+
+- **:four:使用`Lettuce`包编写连接`Redis-server`的代码**
+
+    - ```java
+        public class JedisTest {
+            public static void main(String[] args) {
+                //构建我们的RedisURI
+                RedisURI redisURI = RedisURI.Builder
+                        .redis("192.168.184.160")
+                        .withPort(6379)
+                        .withAuthentication("default","58828738")
+                        .build();
+                //创建Redis-client客户端连接
+                RedisClient redisClient = RedisClient.create(redisURI);
+                StatefulRedisConnection<String, String> connection = redisClient.connect();
+        
+                //借助客户端连接来获取Redis命令执行器
+                RedisCommands<String, String> command;
+                command = connection.sync();
+        
+                //调用命令
+                System.out.println(command.keys("*"));
+                System.out.println(command.flushall());
+                System.out.println(command.set("k1","v1"));
+                System.out.println("*************"+command.get("k1"));
+                //关闭释放获取的资源
+                connection.close();
+                redisClient.shutdown();
+            }
+        }
+        ```
+
+## `RedisTemplate`版
+
+- :one:**创建一个常规的`SpringBoot`项目**
+
+    - <img src="https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121210577.png" alt="image-20230312121048472" style="zoom: 80%;" />
+
+- **:two:在`pom.xml`配置文件中添加`Jedis`的依赖**
+
+    - ```xml
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+        ```
+
+- :three:**编写`application.properties`配置文件**
+
+    - ```properties
+        spring.redis.database=0
+        spring.redis.host=192.168.184.160
+        spring.redis.port=6379
+        spring.redis.password=58828738
+        spring.redis.username=default
+        ```
+
+    - ![image-20230312144740804](https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121447246.png)
+
+- :four:**编写`SpringBoot`主启动类**
+
+    - ```java
+        @SpringBootApplication
+        public class MyJedisApplication {
+        
+            public static void main(String[] args) {
+                SpringApplication.run(MyJedisApplication.class, args);
+            }
+        
+        }
+        ```
+
+- :four:**使用`RedisTenplate`包编写连接`Redis-server`的代码**
+
+    - ```java
+        @RestController
+        public class JedisTest {
+            
+            private final String PREFIX = "tangling:";
+            
+            @Resource
+            private StringRedisTemplate stringRedisTemplate;
+            
+            @RequestMapping("/hello")
+            public void Tests() {
+                int KeyID = ThreadLocalRandom.current().nextInt(1000);
+                String serialNo = UUID.randomUUID().toString();
+        
+                String key = PREFIX + KeyID;
+                String value = "我的订单：" + serialNo;
+                System.out.println(key+ '\n' +value);
+        
+                stringRedisTemplate.opsForValue().set(key,value);
+                String result = stringRedisTemplate.opsForValue().get(value);
+                System.out.println(result);
+            }
+        }
+        ```
+
+![image-20230312153739169](https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121537206.png)
+
+# 使用`RedisTemplate`连接`Redis`集群
+
+- :one:**创建一个常规的`SpringBoot`项目**
+
+    - <img src="https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121210577.png" alt="image-20230312121048472" style="zoom: 80%;" />
+
+- **:two:在`pom.xml`配置文件中添加`Jedis`的依赖**
+
+    - ```xml
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+        ```
+
+- :three:**编写`application.properties`配置文件**
+
+    - ```properties
+        spring.redis.password=58828738
+        spring.redis.cluster.nodes=192.168.184.160:6379,192.168.184.161:6380,192.168.184.162:6381,192.168.184.163:6382,192.168.184.164:6383,192.168.184.165:6384
+        ```
+
+    - ![image-20230312144740804](https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121447246.png)
+
+- :four:**编写`SpringBoot`主启动类**
+
+    - ```java
+        @SpringBootApplication
+        public class MyJedisApplication {
+        
+            public static void main(String[] args) {
+                SpringApplication.run(MyJedisApplication.class, args);
+            }
+        
+        }
+        ```
+
+- :four:**使用`RedisTenplate`包编写连接`Redis-server`的代码**
+
+    - ```java
+        @RestController
+        public class JedisTest {
+            
+            private final String PREFIX = "tangling:";
+            
+            @Resource
+            private StringRedisTemplate stringRedisTemplate;
+            
+            @RequestMapping("/hello")
+            public void Tests() {
+                int KeyID = ThreadLocalRandom.current().nextInt(1000);
+                String serialNo = UUID.randomUUID().toString();
+        
+                String key = PREFIX + KeyID;
+                String value = "我的订单：" + serialNo;
+                System.out.println(key+ '\n' +value);
+        
+                stringRedisTemplate.opsForValue().set(key,value);
+                String result = stringRedisTemplate.opsForValue().get(value);
+                System.out.println(result);
+            }
+        }
+        ```
+
+![image-20230312153739169](https://raw.githubusercontent.com/tangling0112/MyPictures/master/img/202303121537206.png)
+
+# `RedisTemplate`连接`Redis`集群的相关问题
+
+## :one:当`Redis`集群有主机发生宕机时,我们的的`SpringBoot`项目短时间内去访问我们的`Redis`集群会发生找不到主机等等一系列的问题
+
+### 问题产生的原因
+
+- `SpringBoot2`版本下,底层默认使用`Lettuce`的`Redis`连接池实现,而`Lettuce`默认情况下只会在第一次连接到我们的`Redis`集群时会去获取集群的拓扑信息,后续便不会再获取,即便我们的`Redis`集群中发生了主机宕机也不会去刷新.
+- 这就导致我们的`SpringBoot`项目下,当我们的项目启动时就会自动取获取`Redis`集群的拓扑信息,并且在项目重启之前这一拓扑信息都不会变更,当然就会导致上面所说的问题产生
+
+### 解决方案
+
+- **添加`application.properties`配置项**
+
+```properties
+spring.redis.lettuce.cluster.refresh.adaptive=true
+
+spring.redis.lettuce.cluster.refresh.period=2000
 ```
 

@@ -23,17 +23,21 @@
 
 - **对我们`SpringBoot`的配置文件进行最基础的配置**
 
-    - 配置我们的全局配置文件与映射文件
+    - 配置我们的`Mybatis`的全局配置文件与映射文件的路径
+    
+        - ![image-20230312003248473](./../../../../../AppData/Roaming/Typora/typora-user-images/image-20230312003248473.png)
+    
     - 配置我们的数据库连接
-
-    ```Yaml
-    spring:
-    	datasource:
-    		url: jdbc:mysql://localhost:3306/test
-    		username: root
-            password: 58828738
-            driver-class-name: com.mysql.jdbc.Driver	
-    ```
+    
+        - ```yaml
+            spring:
+            	datasource:
+            		url: jdbc:mysql://localhost:3306/test
+            		username: root
+                    password: 58828738
+                    driver-class-name: com.mysql.jdbc.Driver	
+            ```
+    
 
 ****
 
@@ -100,8 +104,8 @@ public MybatisAutoConfiguration(MybatisProperties properties, ObjectProvider<Int
 ```java
 @ConfigurationProperties(prefix = MybatisProperties.MYBATIS_PREFIX)
 public class MybatisProperties {
-
-  public static final String MYBATIS_PREFIX = "mybatis";
+	
+    public static final String MYBATIS_PREFIX = "mybatis";
 ```
 
 ****
@@ -110,7 +114,7 @@ public class MybatisProperties {
 
 > ​		我们知道我们的`Mybatis`在使用时是借助于`SqlSession`进行使用的,而我们的`SqlSession`又是由我们的`SqlSessionFactory`获取到的.因此我们在使用`Mybaits`之前都要实例化我们的`SqlSessionFacotry`.
 >
-> ​		我们这里就借助于`@Bean`注解为我们的`Spring BeanFactory`中注册进了一个`SqlSessionFactory`实例的`Bean`对象,这也就意味着如果我们在我们的`SpringBoot`项目中如果需要使用`SqlSessionFactory`实例时,直接借助于我们的`Spring IOC`的自动装配机制即可很方便地取得,而不再需要去自己实例化.
+> ​		我们这里`MybatisAutoConfiguration`的`sqlSessionFactory`方法就借助于`@Bean`注解为我们的`Spring BeanFactory`中注册进了一个`SqlSessionFactory`实例的`Bean`对象,这也就意味着如果我们在我们的`SpringBoot`项目中如果需要使用`SqlSessionFactory`实例时,直接借助于我们的`Spring IOC`的自动装配机制即可很方便地取得,而不再需要去自己实例化.
 >
 > ​		并且我们的`SpringBoot`下的`Mybaits`的自动配置也用到了这个`Bean`对象
 
@@ -255,7 +259,3 @@ public static class AutoConfiguredMapperScannerRegistrar
 > ​		实际上,我们只要通过`SpringBoot`的配配置文件配置好我们的`Mybatis`的全局配置文件与映射文件的路径之,设置好我们的数据源相关的配置之后我们就可以开启我们的`Mybatis`的使用了
 >
 > ​		并且此时`Mybatis`的使用和我们常规情况下的使用方式是一致的.
-
-# 3 `SpringBoot`基于注解配置`Mybatis`
-
-> ​		
